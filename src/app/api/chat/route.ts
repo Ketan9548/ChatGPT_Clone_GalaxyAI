@@ -3,13 +3,21 @@ import { connectDB } from "@/Lib/db";
 import Conversation from "@/models/Conversation";
 import { getMemoryForUser, saveMemoryForUser } from "@/Lib/mem0";
 
-// ❌ Edge breaks mongoose
-export const runtime = "nodejs"; // ✅ Node.js runtime
+// Node.js runtime is required for Mongoose
+export const runtime = "nodejs";
 
 // Strongly type message objects
 interface Message {
   role: "user" | "assistant";
   content: string;
+}
+
+// Strongly type MongoDB memory document
+interface MemoryDoc {
+  role: "user" | "assistant";
+  content: string;
+  _id?: string;
+  __v?: number;
 }
 
 // Type for Gemini API response candidate
@@ -37,8 +45,8 @@ export async function POST(req: NextRequest) {
     }
 
     // --- 🧠 Fetch memory from DB ---
-    const rawMemory = await getMemoryForUser(userId);
-    const memory: Message[] = rawMemory.map((m: any) => ({
+    const rawMemory: MemoryDoc[] = await getMemoryForUser(userId);
+    const memory: Message[] = rawMemory.map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -75,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     const data: GeminiResponse = await response.json();
     const reply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      data.candidates?.[0]?.content?.parts?.[0]?.text ??
       "My apologies, I couldn't generate a response.";
 
     // --- 💾 Save conversation ---
