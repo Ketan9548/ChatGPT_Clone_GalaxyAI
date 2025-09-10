@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
+import mammoth  from "mammoth";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
@@ -33,9 +34,9 @@ export async function POST(req: Request) {
           .end(buffer);
       }
     );
-    
+
     if (!upload) {
-        throw new Error("Cloudinary upload failed.");
+      throw new Error("Cloudinary upload failed.");
     }
 
     let text = "";
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       text,
       chatgpt_summary: reply,
     });
-  } catch (err: unknown) { // 3. Fixed catch block
+  } catch (err: unknown) {
     console.error("Upload error:", err);
     let errorMessage = "An unknown error occurred.";
     if (err instanceof Error) {
