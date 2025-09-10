@@ -12,14 +12,6 @@ interface Message {
   content: string;
 }
 
-// Strongly type MongoDB memory document
-interface MemoryDoc {
-  role: "user" | "assistant";
-  content: string;
-  _id?: string;
-  __v?: number;
-}
-
 // Type for Gemini API response candidate
 interface GeminiResponse {
   candidates?: {
@@ -45,8 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     // --- 🧠 Fetch memory from DB ---
-    const rawMemory: MemoryDoc[] = await getMemoryForUser(userId);
-    const memory: Message[] = rawMemory.map((m) => ({
+    // Fetch as any[] from Mongoose and map to Message[] to satisfy TypeScript
+    const rawMemory = await getMemoryForUser(userId); // keep return type as any[]
+    const memory: Message[] = rawMemory.map((m: any) => ({
       role: m.role,
       content: m.content,
     }));
