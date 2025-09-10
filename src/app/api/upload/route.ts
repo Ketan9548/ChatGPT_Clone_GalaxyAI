@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
 import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
-import mammoth  from "mammoth";
 
+// Explicitly set the runtime to Node.js
+export const runtime = "nodejs";
+
+// Cloudinary configuration
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
 });
 
-// Explicitly set the runtime to Node.js, as these libraries require it.
-export const runtime = "nodejs";
+// Strongly type OpenAI response
+interface ChatCompletionResponse {
+  choices?: { message?: { content?: string } }[];
+}
 
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
@@ -23,25 +28,23 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 1. Fixed Promise Typing
-    const upload = await new Promise<UploadApiResponse | undefined>(
-      (resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream({ resource_type: "auto" }, (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          })
-          .end(buffer);
-      }
-    );
+    // --- Upload file to Cloudinary ---
+    const upload: UploadApiResponse = await new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream({ resource_type: "auto" }, (error, result) => {
+          if (error) reject(error);
+          else resolve(result as UploadApiResponse);
+        })
+        .end(buffer);
+    });
 
-    if (!upload) {
+    if (!upload?.secure_url) {
       throw new Error("Cloudinary upload failed.");
     }
 
+    // --- Extract text based on file type ---
     let text = "";
     try {
-      // 2. Fixed use of require() with dynamic import()
       if (file.type === "application/pdf") {
         const pdfParse = (await import("pdf-parse")).default;
         const data = await pdfParse(buffer);
@@ -63,15 +66,26 @@ export async function POST(req: Request) {
       text = "Failed to extract text from document.";
     }
 
-    const prompt = `Summarize the following document: \n\n${text}`;
+    // --- Prepare prompt for ChatGPT ---
+    const prompt = `You are an expert assistant.\nSummarize this document, highlight key points, and explain any important details in clear language:\n\n${text}`;
 
+    // --- Call OpenAI API ---
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      // ... same fetch options
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+      }),
     });
 
-    const chatData = await chatResponse.json();
+    const chatData: ChatCompletionResponse = await chatResponse.json();
     const reply = chatData.choices?.[0]?.message?.content ?? "";
 
+    // --- Return Cloudinary URL, extracted text, and AI summary ---
     return NextResponse.json({
       url: upload.secure_url,
       text,
@@ -79,10 +93,7 @@ export async function POST(req: Request) {
     });
   } catch (err: unknown) {
     console.error("Upload error:", err);
-    let errorMessage = "An unknown error occurred.";
-    if (err instanceof Error) {
-      errorMessage = err.message;
-    }
+    const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
