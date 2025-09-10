@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/Lib/db";
 import Conversation from "@/models/Conversation";
 import { getMemoryForUser, saveMemoryForUser } from "@/Lib/mem0";
@@ -7,26 +7,37 @@ import { getMemoryForUser, saveMemoryForUser } from "@/Lib/mem0";
 // export const runtime = "edge";
 export const runtime = "nodejs"; // ✅ use Node.js runtime
 
+// Define a type for message objects to avoid using `any`
+interface Message {
+  role: string;
+  content: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const { messages, userId } = await req.json();
-
+    // Apply the Message type to the destructured request body
+    const { messages, userId }: { messages: Message[]; userId: string } =
+      await req.json();
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "userId is required in request body" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+      return NextResponse.json(
+        { error: "userId is required in request body" },
+        { status: 400 }
       );
     }
 
     // --- 🧠 Fetch memory ---
-    const memory = await getMemoryForUser(userId);
-    const context = memory.map((m: any) => `${m.role}: ${m.content}`).join("\n");
+    const memory: Message[] = await getMemoryForUser(userId);
+    const context = memory
+      .map((m: Message) => `${m.role}: ${m.content}`)
+      .join("\n");
 
     // --- 📝 Prepare prompt ---
-    const userText = messages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
+    const userText = messages
+      .map((m: Message) => `${m.role}: ${m.content}`)
+      .join("\n");
     const prompt = `${context}\n${userText}`;
 
     // --- 🤖 Call Google Gemini REST API ---
@@ -47,12 +58,15 @@ export async function POST(req: NextRequest) {
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      // Throw a detailed error if the API call fails
+      const errorBody = await response.text();
+      throw new Error(`Gemini API error: ${response.statusText} - ${errorBody}`);
     }
 
     const data = await response.json();
     const reply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "My apologies, I couldn't generate a response.";
 
     // --- 💾 Save conversation ---
     await Conversation.create({
@@ -64,14 +78,17 @@ export async function POST(req: NextRequest) {
     await saveMemoryForUser(userId, { role: "assistant", content: reply });
 
     // --- 📤 Return AI reply ---
-    return new Response(JSON.stringify({ reply }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    console.error("Chat error:", error);
-    return new Response(JSON.stringify({ error: "Chat error" }), {
-      status: 500,
-    });
+    return NextResponse.json({ reply });
+    
+  } catch (err: unknown) {
+    console.error("Chat API error:", err);
+
+    let errorMessage = "An internal server error occurred.";
+    if (err instanceof Error) {
+      // Use the actual error message for more specific client-side errors
+      errorMessage = err.message;
+    }
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
