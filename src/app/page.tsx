@@ -17,54 +17,104 @@ export default function Home() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const handleSend = async (
-    msg: string,
-    fileUrl?: string,
-    aiSummary?: string
-  ) => {
-    if (!msg.trim() && !fileUrl && !aiSummary) return;
+  const handleSend = async (msg: string, file?: File) => {
+    if (!msg.trim() && !file) return;
 
-    const userMessage: Message = { role: "user", content: msg };
-    let newMessages: Message[] = [userMessage, ...[]];
+    let updatedMessages: Message[] = [...messages];
 
-    if (fileUrl && aiSummary) {
-      newMessages.push({ role: "user", content: `File uploaded: ${fileUrl}` });
-      newMessages.push({ role: "assistant", content: aiSummary });
+    // Add user message if text exists
+    if (msg.trim()) {
+      const userMessage: Message = { role: "user", content: msg };
+      updatedMessages = [...updatedMessages, userMessage];
+      setMessages(updatedMessages);
     }
 
-    newMessages = [...messages, ...newMessages];
-    setMessages(newMessages);
+    // File upload handling
+    if (file) {
+      const uploadingMessage: Message = {
+        role: "assistant",
+        content: `Uploading file: ${file.name}...`,
+      };
+      updatedMessages = [...updatedMessages, uploadingMessage];
+      setMessages(updatedMessages);
+      setIsLoading(true);
 
-    setIsLoading(true); // 👈 show typing dots while waiting
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: "test-user",
-          messages: newMessages,
-        }),
-      });
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
 
-      const data = await res.json();
-      if (data.reply) {
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: data.reply,
-        };
-        setMessages([...newMessages, assistantMessage]);
+        const fileMessages: Message[] = [];
+
+        if (data.success) {
+          if (data.ai_summary) {
+            fileMessages.push({ role: "assistant", content: data.ai_summary });
+          } else {
+            fileMessages.push({
+              role: "assistant",
+              content: `File uploaded: ${data.fileUrl}`,
+            });
+          }
+        } else {
+          fileMessages.push({
+            role: "assistant",
+            content: `Failed to upload file: ${file.name}`,
+          });
+        }
+
+        setMessages((prev) => [
+          ...prev.filter((m) => m !== uploadingMessage),
+          ...fileMessages,
+        ]);
+      } catch (err) {
+        console.error("Upload error:", err);
+        setMessages((prev) => [
+          ...prev.filter((m) => m !== uploadingMessage),
+          {
+            role: "assistant",
+            content: `Upload failed for ${file.name}`,
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error("Chat error:", err);
-    } finally {
-      setIsLoading(false); // 👈 hide typing dots after response
+    }
+
+    // Send text message to /api/chat if text exists
+    if (msg.trim()) {
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: "test-user",
+            messages: updatedMessages, // ✅ use latest array
+          }),
+        });
+        const data = await res.json();
+        if (data.reply) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: data.reply },
+          ]);
+        }
+      } catch (err) {
+        console.error("Chat error:", err);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const handleNewChat = () => {
     setMessages([]);
@@ -103,12 +153,14 @@ export default function Home() {
 
         {/* Messages */}
         <main className="flex-1 overflow-y-auto p-4 space-y-4">
-          <ChatWindow messages={messages} isLoading={isLoading} /> {/* 👈 pass isLoading */}
+          <ChatWindow messages={messages} isLoading={isLoading} />{" "}
+          {/* 👈 pass isLoading */}
           <div ref={chatEndRef} />
         </main>
 
         <footer className="border-t border-gray-700 bg-[#40414f] p-3">
-          <ChatInput onSend={handleSend} />
+          <ChatInput onSend={(text, file) => handleSend(text, file)} />
+
           <p className="text-xs text-gray-400 mt-2 text-center">
             ChatGPT Clone – powered by API
           </p>

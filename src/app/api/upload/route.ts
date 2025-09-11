@@ -1,90 +1,43 @@
-// pages/api/upload.ts (or your chosen route)
-
+// app/api/upload/route.ts
 import { NextResponse } from "next/server";
-import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
-import { google } from "googleapis";
-import mammoth from "mammoth"; // for .docx files
-import * as XLSX from "xlsx"; // for excel/csv
-import * as cheerio from "cheerio"; // for html
+import { v2 as cloudinary } from "cloudinary";
+import * as XLSX from "xlsx";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
+import Tesseract from "tesseract.js";
+import { Readable } from "stream";
 
-// Runtime required for Node.js APIs
+// Node.js runtime
 export const runtime = "nodejs";
 
 // --- Cloudinary config ---
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Gemini API URL
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
-
-// --- Upload file to Cloudinary ---
-async function uploadToCloudinary(buffer: Buffer): Promise<UploadApiResponse> {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { resource_type: "auto" },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result as UploadApiResponse);
-      }
-    );
-    uploadStream.end(buffer);
-  });
-}
-
 // --- Extract text from file ---
-// Note: The 'file' parameter is now an object with type and name properties
-async function extractTextFromFile(
-  file: { type: string; name: string },
-  buffer: Buffer
-): Promise<string> {
+async function extractTextFromFile(file: File, buffer: Buffer): Promise<string> {
   // PDF
   if (file.type === "application/pdf") {
-    const pdfParse = (await import("pdf-parse")).default;
     const data = await pdfParse(buffer);
     return data.text || "";
   }
 
-  // Images (OCR)
-  if (file.type.startsWith("image/")) {
-    const Tesseract = (await import("tesseract.js")).default;
-    const { data } = await Tesseract.recognize(buffer, "eng");
-    return data.text;
+  // DOCX
+  if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.name.endsWith(".docx")) {
+    const { value: text } = await mammoth.extractRawText({ buffer });
+    return text || "";
   }
 
-  // Web pages (HTML)
-  if (file.type.startsWith("text/html")) {
-    const $ = cheerio.load(buffer.toString());
-    $("script, style").remove(); // Remove script and style tags for cleaner text
-    return $("body").text().replace(/\s\s+/g, " ").trim();
-  }
-
-  // Plain text
-  if (file.type.startsWith("text/") || file.name.endsWith(".txt")) {
-    return buffer.toString("utf-8");
-  }
-
-  // Word documents
+  // Excel / CSV
   if (
-    file.type ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.name.endsWith(".docx")
-  ) {
-    const { value } = await mammoth.extractRawText({ buffer });
-    return value || "";
-  }
-
-  // Excel/CSV
-  if (
-    file.type ===
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    file.type === "application/vnd.ms-excel" ||
+    file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
     file.type === "text/csv" ||
-    file.name.endsWith(".csv") ||
-    file.name.endsWith(".xlsx")
+    file.name.endsWith(".xlsx") ||
+    file.name.endsWith(".csv")
   ) {
     const workbook = XLSX.read(buffer, { type: "buffer" });
     let text = "";
@@ -95,117 +48,101 @@ async function extractTextFromFile(
     return text;
   }
 
-  return "Text extraction not supported for this file type.";
+  // Images (OCR)
+  if (file.type.startsWith("image/")) {
+    const { data: { text } } = await Tesseract.recognize(buffer, "eng", {
+      logger: (m) => console.log(m),
+      workerPath: require.resolve("tesseract.js-node")
+    });
+    return text || "";
+  }
+
+  // Other file types
+  return "";
 }
 
-// --- Get AI explanation from Gemini ---
-async function askGeminiForExplanation(text: string): Promise<string> {
-  if (!text || text.startsWith("Text extraction not supported")) {
-    return "Could not generate an explanation because no text was found or the file type is not supported.";
-  }
-
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    throw new Error("Google Service Account JSON key is not set in .env");
-  }
-
-  const auth = new google.auth.GoogleAuth({
-    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+// --- Upload to Cloudinary ---
+async function uploadToCloudinary(file: File, buffer: Buffer) {
+  return new Promise<{ url: string; public_id: string }>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: "auto", folder: "uploads" },
+      (error, result) => {
+        if (error || !result) return reject(error);
+        resolve({ url: result.secure_url, public_id: result.public_id });
+      }
+    );
+    const readable = Readable.from(buffer);
+    readable.pipe(stream);
   });
-
-  const authToken = await auth.getAccessToken();
-  if (!authToken) throw new Error("Failed to get Google Auth token");
-
-  const prompt = `You are an expert assistant. Explain the following document in simple, clear language:\n\n${text}`;
-
-  const response = await fetch(GEMINI_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json();
-  return (
-    data.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "AI did not provide an explanation."
-  );
 }
 
-// --- Main route handler ---
+// --- Main API handler ---
 export async function POST(req: Request) {
   try {
-    let fileInfo: { name: string; type: string };
-    let buffer: Buffer;
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
 
-    const contentType = req.headers.get("content-type") || "";
-
-    // --- Case 1: Handle URL input from a JSON body ---
-    if (contentType.includes("application/json")) {
-      const { url } = await req.json();
-      if (!url || typeof url !== "string") {
-        return NextResponse.json({ error: "A 'url' string is required in the JSON body" }, { status: 400 });
-      }
-
-      const fileResponse = await fetch(url);
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to fetch file from URL: ${fileResponse.statusText}`);
-      }
-
-      const arrayBuffer = await fileResponse.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-      fileInfo = {
-        name: new URL(url).pathname.split("/").pop() || "file", // Extract file name from URL
-        type: fileResponse.headers.get("content-type") || "application/octet-stream",
-      };
-    
-    // --- Case 2: Handle direct file upload ---
-    } else if (contentType.includes("multipart/form-data")) {
-      const formData = await req.formData();
-      const file = formData.get("file") as File | null;
-
-      if (!file) {
-        return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-      }
-      
-      buffer = Buffer.from(await file.arrayBuffer());
-      fileInfo = { name: file.name, type: file.type };
-
-    } else {
-        return NextResponse.json({ error: "Unsupported Content-Type. Use 'application/json' for URLs or 'multipart/form-data' for file uploads." }, { status: 415 });
+    if (!file) {
+      return NextResponse.json({ success: false, message: "No file uploaded" }, { status: 400 });
     }
 
-    // --- Process the file buffer concurrently ---
-    const [uploadDetails, extractedText] = await Promise.all([
-      uploadToCloudinary(buffer),
-      extractTextFromFile(fileInfo, buffer),
-    ]);
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    if (!uploadDetails?.secure_url) {
-      throw new Error("Cloudinary upload failed to return a URL");
+    // Extract text
+    const extractedText = await extractTextFromFile(file, buffer);
+
+    // Upload to Cloudinary
+    const { url: fileUrl } = await uploadToCloudinary(file, buffer);
+
+    // Optional: AI summary
+    let aiSummary: string | null = null;
+    try {
+      if (extractedText?.trim().length > 5) {
+        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64)
+          throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 is not set");
+
+        const decodedKey = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, "base64").toString("utf-8");
+        const credentials = JSON.parse(decodedKey);
+        const { google } = await import("googleapis");
+        const auth = new google.auth.GoogleAuth({
+          credentials,
+          scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+        });
+        const token = await auth.getAccessToken();
+
+        const prompt = `Summarize this document clearly:\n\n${extractedText}`;
+        const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
+        const resp = await fetch(GEMINI_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          aiSummary = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        }
+      }
+    } catch (err) {
+      console.warn("AI summary failed:", err);
     }
-
-    // --- Get AI explanation ---
-    const aiExplanation = await askGeminiForExplanation(extractedText);
 
     return NextResponse.json({
-      file_url: uploadDetails.secure_url,
-      extracted_text: extractedText,
-      ai_summary: aiExplanation,
+      success: true,
+      fileName: file.name,
+      fileType: file.type,
+      fileUrl,
+      extracted_text: extractedText || null,
+      ai_summary: aiSummary,
     });
-  } catch (err: unknown) {
-    console.error("Upload route error:", err);
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown server error";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } catch (err: any) {
+    console.error("Upload API error:", err);
+    return NextResponse.json(
+      { success: false, message: err.message || "Upload failed" },
+      { status: 500 }
+    );
   }
 }

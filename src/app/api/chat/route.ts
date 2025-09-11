@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 type MessageRole = "user" | "assistant" | "model";
 
 interface Message {
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
 }
 
@@ -19,7 +19,7 @@ interface GeminiContentPart {
 }
 
 interface GeminiMessage {
-  role: "user" | "model"; 
+  role: "user" | "model";
   parts: GeminiContentPart[];
 }
 
@@ -34,6 +34,19 @@ interface GeminiResponse {
 interface RawMemoryDoc {
   role: string;
   content: string;
+}
+
+// --- Helper: Trim conversation to token budget (approx) ---
+function trimConversation(messages: Message[], maxTokens = 2000) {
+  let tokenCount = 0;
+  const trimmed: Message[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    tokenCount += Math.ceil(msg.content.length / 4);
+    if (tokenCount > maxTokens) break;
+    trimmed.unshift(msg);
+  }
+  return trimmed;
 }
 
 // --- API Route ---
@@ -51,22 +64,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- Fetch user memory and map to correct type ---
+    // --- Fetch user memory ---
     const rawMemoryDocs = await getMemoryForUser(userId);
-    const rawMemory: RawMemoryDoc[] = rawMemoryDocs.map((mem) => ({
-      role: mem.role || "user",
+    const memoryMessages: Message[] = rawMemoryDocs.map((mem) => ({
+      role: mem.role === "assistant" ? "assistant" : "user",
       content: mem.content || "",
     }));
 
-    const conversationHistory: Message[] = rawMemory.map((mem) => ({
-      role: mem.role === "assistant" ? "assistant" : "user",
-      content: mem.content,
-    }));
+    // --- Combine memory + incoming messages ---
+    const fullConversation: Message[] = [...memoryMessages, ...messages];
 
-    const fullConversation: Message[] = [...conversationHistory, ...messages];
+    // --- Trim conversation for token budget ---
+    const trimmedConversation = trimConversation(fullConversation);
 
     // --- Prepare Gemini API input ---
-    const contentsForApi: GeminiMessage[] = fullConversation.map((msg) => ({
+    const contentsForApi: GeminiMessage[] = trimmedConversation.map((msg) => ({
       role: msg.role === "assistant" ? "model" : "user",
       parts: [{ text: msg.content }],
     }));
@@ -91,13 +103,15 @@ export async function POST(req: NextRequest) {
 
     const data: GeminiResponse = await geminiResponse.json();
     const aiReply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ??
-      "I couldn't generate a response.";
+      data.candidates?.[0]?.content?.parts?.[0]?.text ?? "I couldn't generate a response.";
 
-    // --- Save messages to DB ---
+    // --- Save conversation in DB ---
     const existingConversation = await Conversation.findOne({ userId });
     if (existingConversation) {
-      existingConversation.messages.push(...messages, { role: "assistant", content: aiReply });
+      existingConversation.messages.push(
+        ...messages,
+        { role: "assistant", content: aiReply }
+      );
       await existingConversation.save();
     } else {
       await Conversation.create({
@@ -106,6 +120,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // --- Save to Mem0 ---
     await saveMemoryForUser(userId, { role: "assistant", content: aiReply });
 
     return NextResponse.json({ reply: aiReply });

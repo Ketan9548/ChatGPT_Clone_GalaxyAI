@@ -5,6 +5,9 @@ import { useEffect, useRef } from "react";
 type Message = {
   role: "user" | "assistant";
   content: string;
+  fileUrl?: string;      // <-- added
+  fileName?: string;     // <-- added
+  fileType?: string;     // <-- added
 };
 
 export default function ChatWindow({
@@ -42,22 +45,21 @@ export default function ChatWindow({
                 : "bg-[#444654] text-gray-100"
             }`}
           >
-            {m.content.split("\n").map((line, idx) => {
-              if (line.startsWith("[File:")) {
-                const url = line.replace("[File:", "").replace("]", "").trim();
-                return (
-                  <a
-                    key={idx}
-                    href={url}
-                    target="_blank"
-                    className="underline text-blue-200 break-all"
-                  >
-                    📎 {url}
-                  </a>
-                );
-              }
-              return <p key={idx}>{line}</p>;
-            })}
+            {/* --- Main AI/User Text --- */}
+            {m.content.split("\n").map((line, idx) => (
+              <p key={idx}>{line}</p>
+            ))}
+
+            {/* --- File link if available --- */}
+            {m.fileUrl && (
+              <a
+                href={m.fileUrl}
+                target="_blank"
+                className="block underline text-blue-200 break-all"
+              >
+                📎 {m.fileName || "View Uploaded File"}
+              </a>
+            )}
           </div>
 
           {m.role === "user" && (

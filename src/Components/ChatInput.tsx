@@ -15,11 +15,8 @@ interface ChatInputProps {
 
 interface UploadResponse {
   file_url?: string;
-  url?: string;
   fileUrl?: string;
   ai_summary?: string;
-  chatgpt_summary?: string;
-  ai_summary_text?: string;
   error?: string;
   rawText?: string;
 }
@@ -32,7 +29,6 @@ export default function ChatInput({ onSend }: ChatInputProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // auto-grow effect
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -41,68 +37,40 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     }
   }, [input]);
 
+  // --- Handle sending ---
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
     let fileUrl: string | undefined;
     let chatSummary: string | undefined;
 
+    // --- Upload file if present ---
     if (file) {
-      console.log(
-        "Preparing upload. file instanceof File:",
-        file instanceof File,
-        "file:",
-        file
-      );
-
-      if (!(file instanceof File)) {
-        alert("Selected item is not a File object. Please reselect.");
-        return;
-      }
-
       setUploading(true);
       const fd = new FormData();
       fd.append("file", file);
 
       try {
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: fd,
-        });
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        const data: UploadResponse = await res.json();
 
-        const text = await res.text();
-        let data: UploadResponse;
-
-        try {
-          data = JSON.parse(text) as UploadResponse;
-        } catch {
-          data = { rawText: text };
-        }
-
-        console.log("Upload response status:", res.status, "body:", data);
-
-        if (!res.ok) {
-          alert(
-            "Upload failed: " +
-              (data.error || data.rawText || res.status.toString())
-          );
+        if (!res.ok || data.error) {
+          alert("Upload failed: " + (data.error || res.status));
         } else {
-          fileUrl = data.file_url ?? data.url ?? data.fileUrl;
-          chatSummary =
-            data.ai_summary ??
-            data.chatgpt_summary ??
-            data.ai_summary_text;
+          fileUrl = data.file_url ?? data.fileUrl;
+          chatSummary = data.ai_summary;
           setFileSummary(chatSummary || "");
         }
       } catch (err) {
-        console.error("Fetch failed:", err);
-        alert("Network/upload failed — see console.");
+        console.error("Upload failed", err);
+        alert("Upload failed — see console.");
       } finally {
         setUploading(false);
         setFile(null);
       }
     }
 
+    // --- Send text message (or file summary) to Home ---
     if (input.trim() || chatSummary) {
       onSend(input, fileUrl, chatSummary);
       setInput("");
@@ -133,21 +101,18 @@ export default function ChatInput({ onSend }: ChatInputProps) {
             type="file"
             className="hidden"
             onChange={(e: ChangeEvent<HTMLInputElement>) => {
-              setFile(e.target.files?.[0] ?? null);
-              console.log(e.target.files?.[0]);
+              if (e.target.files?.[0]) setFile(e.target.files[0]);
             }}
           />
           📎
         </label>
 
-        {/* Text input with auto-grow */}
+        {/* Text input */}
         <textarea
           ref={textareaRef}
           rows={1}
           value={input}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-            setInput(e.target.value)
-          }
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Send a message or upload a file..."
           className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
@@ -166,13 +131,6 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           {uploading ? "Uploading..." : "Send"}
         </button>
       </form>
-
-      {/* Selected file info */}
-      {file && (
-        <p className="text-xs text-gray-300 mt-2 text-center">
-          Selected file: {file.name}
-        </p>
-      )}
 
       {/* File summary */}
       {fileSummary && (
