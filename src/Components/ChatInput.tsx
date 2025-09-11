@@ -1,23 +1,22 @@
 "use client";
 
-import { useState, FormEvent, ChangeEvent } from "react";
+import { useState, FormEvent, ChangeEvent, KeyboardEvent } from "react";
 
-export default function ChatInput({
-  onSend,
-}: {
+interface ChatInputProps {
   onSend: (msg: string, fileUrl?: string, chatSummary?: string) => void;
-}) {
+}
+
+export default function ChatInput({ onSend }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [fileSummary, setFileSummary] = useState<string>("");
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSend = async () => {
     if (!input.trim() && !file) return;
 
-    let fileUrl;
-    let chatSummary;
+    let fileUrl: string | undefined;
+    let chatSummary: string | undefined;
 
     if (file) {
       setUploading(true);
@@ -35,7 +34,7 @@ export default function ChatInput({
           alert(data.error);
         } else {
           fileUrl = data.url;
-          chatSummary = data.chatgpt_summary;
+          chatSummary = data.ai_summary || data.chatgpt_summary;
           setFileSummary(chatSummary || "");
         }
       } catch (err) {
@@ -47,8 +46,23 @@ export default function ChatInput({
       }
     }
 
-    onSend(input, fileUrl, chatSummary);
-    setInput("");
+    if (input.trim() || chatSummary) {
+      onSend(input, fileUrl, chatSummary);
+      setInput("");
+    }
+  };
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    handleSend();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter without Shift → send
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault(); // prevent new line
+      handleSend();
+    }
   };
 
   return (
@@ -57,6 +71,7 @@ export default function ChatInput({
         onSubmit={handleSubmit}
         className="flex items-center gap-2 max-w-4xl mx-auto w-full"
       >
+        {/* File upload */}
         <label className="cursor-pointer text-gray-400 hover:text-white">
           <input
             type="file"
@@ -68,16 +83,19 @@ export default function ChatInput({
           📎
         </label>
 
+        {/* Text input */}
         <textarea
           rows={1}
           value={input}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
             setInput(e.target.value)
           }
+          onKeyDown={handleKeyDown}
           placeholder="Send a message or upload a file..."
           className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
         />
 
+        {/* Send button */}
         <button
           type="submit"
           disabled={uploading}
@@ -89,15 +107,17 @@ export default function ChatInput({
         </button>
       </form>
 
+      {/* Selected file info */}
       {file && (
         <p className="text-xs text-gray-300 mt-2 text-center">
           Selected file: {file.name}
         </p>
       )}
 
+      {/* File summary */}
       {fileSummary && (
         <div className="mt-2 p-2 bg-gray-800 text-gray-100 rounded-md text-sm">
-          <strong>File Summary:</strong>
+          <strong>AI Summary:</strong>
           <p>{fileSummary}</p>
         </div>
       )}
