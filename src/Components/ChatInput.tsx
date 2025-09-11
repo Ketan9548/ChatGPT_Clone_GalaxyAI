@@ -47,7 +47,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         });
 
         const text = await res.text();
-        let data: any = {};
+        let data: unknown = {};
         try {
           data = JSON.parse(text);
         } catch {
