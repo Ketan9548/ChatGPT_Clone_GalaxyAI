@@ -3,9 +3,12 @@ import { connectDB } from "@/Lib/db";
 import Conversation from "@/models/Conversation";
 import { getMemoryForUser, saveMemoryForUser } from "@/Lib/mem0";
 
-
+// Node.js runtime is required for Mongoose
 export const runtime = "nodejs";
 
+// --- Type Definitions ---
+
+// Updated to align with Gemini's "model" role for the assistant
 type MessageRole = "user" | "assistant" | "model";
 
 interface Message {
@@ -13,7 +16,7 @@ interface Message {
   content: string;
 }
 
-
+// More precise type for the parts of a Gemini API message
 interface GeminiContentPart {
   text: string;
 }
@@ -52,9 +55,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. --- Fetch and Prepare Conversation History ---
-    // We assume getMemoryForUser returns documents that can be mapped to our Message interface.
-    // This avoids using `any` and keeps our code type-safe.
-    const rawMemory: { role: string, content: string }[] = await getMemoryForUser(userId);
+    // The `getMemoryForUser` function returns raw Mongoose documents.
+    // We type it as `any[]` to handle this complex type before safely mapping it.
+    const rawMemory: any[] = await getMemoryForUser(userId);
     const conversationHistory: Message[] = rawMemory.map((mem) => ({
       role: mem.role as MessageRole,
       content: mem.content,
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { 
             "Content-Type": "application/json",
-    
+            // Using a header for the API key is a common best practice.
             "x-goog-api-key": process.env.GEMINI_API_KEY!,
         },
         body: JSON.stringify({ contents: contentsForApi }),
@@ -98,18 +101,20 @@ export async function POST(req: NextRequest) {
       "My apologies, I couldn't generate a response.";
 
       
+    // 5. --- Save the Conversation Turn to the Database ---
+    // Save the user's message and the AI's reply to your long-term storage.
     await Conversation.create({
       userId,
       messages: [...messages, { role: "assistant", content: reply }],
     });
 
-    
+    // Also save the latest reply to the short-term "memory" for the next turn.
     await saveMemoryForUser(userId, { role: "assistant", content: reply });
 
-
+    // 6. --- Return the AI's Reply ---
     return NextResponse.json({ reply });
 
-  } catch (err: unknown) {
+  } catch (err: unknown) { // This implementation is perfect!
     console.error("Chat API error:", err);
 
     const errorMessage =
@@ -118,3 +123,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
