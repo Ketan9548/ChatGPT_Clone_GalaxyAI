@@ -36,6 +36,12 @@ interface GeminiResponse {
   }[];
 }
 
+// Type for the raw document we expect from Mongoose. We only care about these fields.
+interface RawMemoryDoc {
+    role: string;
+    content: string;
+}
+
 
 // --- Main API Route Handler ---
 
@@ -56,8 +62,8 @@ export async function POST(req: NextRequest) {
 
     // 2. --- Fetch and Prepare Conversation History ---
     // The `getMemoryForUser` function returns raw Mongoose documents.
-    // We type it as `any[]` to handle this complex type before safely mapping it.
-    const rawMemory: any[] = await getMemoryForUser(userId);
+    // We cast the result to an array of objects with the shape we need, avoiding `any`.
+    const rawMemory = (await getMemoryForUser(userId)) as RawMemoryDoc[];
     const conversationHistory: Message[] = rawMemory.map((mem) => ({
       role: mem.role as MessageRole,
       content: mem.content,
