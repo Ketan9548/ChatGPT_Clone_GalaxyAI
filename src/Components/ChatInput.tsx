@@ -1,9 +1,27 @@
 "use client";
 
-import { useState, FormEvent, ChangeEvent, KeyboardEvent, useRef, useEffect } from "react";
+import {
+  useState,
+  FormEvent,
+  ChangeEvent,
+  KeyboardEvent,
+  useRef,
+  useEffect,
+} from "react";
 
 interface ChatInputProps {
   onSend: (msg: string, fileUrl?: string, chatSummary?: string) => void;
+}
+
+interface UploadResponse {
+  file_url?: string;
+  url?: string;
+  fileUrl?: string;
+  ai_summary?: string;
+  chatgpt_summary?: string;
+  ai_summary_text?: string;
+  error?: string;
+  rawText?: string;
 }
 
 export default function ChatInput({ onSend }: ChatInputProps) {
@@ -17,8 +35,9 @@ export default function ChatInput({ onSend }: ChatInputProps) {
   // auto-grow effect
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"; // reset
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px"; // grow
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height =
+        textareaRef.current.scrollHeight + "px";
     }
   }, [input]);
 
@@ -29,7 +48,12 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     let chatSummary: string | undefined;
 
     if (file) {
-      console.log("Preparing upload. file instanceof File:", file instanceof File, "file:", file);
+      console.log(
+        "Preparing upload. file instanceof File:",
+        file instanceof File,
+        "file:",
+        file
+      );
 
       if (!(file instanceof File)) {
         alert("Selected item is not a File object. Please reselect.");
@@ -47,9 +71,10 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         });
 
         const text = await res.text();
-        let data: unknown = {};
+        let data: UploadResponse;
+
         try {
-          data = JSON.parse(text);
+          data = JSON.parse(text) as UploadResponse;
         } catch {
           data = { rawText: text };
         }
@@ -57,10 +82,16 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         console.log("Upload response status:", res.status, "body:", data);
 
         if (!res.ok) {
-          alert("Upload failed: " + (data.error || data.rawText || res.status));
+          alert(
+            "Upload failed: " +
+              (data.error || data.rawText || res.status.toString())
+          );
         } else {
           fileUrl = data.file_url ?? data.url ?? data.fileUrl;
-          chatSummary = data.ai_summary ?? data.chatgpt_summary ?? data.ai_summary_text;
+          chatSummary =
+            data.ai_summary ??
+            data.chatgpt_summary ??
+            data.ai_summary_text;
           setFileSummary(chatSummary || "");
         }
       } catch (err) {
@@ -114,7 +145,9 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           ref={textareaRef}
           rows={1}
           value={input}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+            setInput(e.target.value)
+          }
           onKeyDown={handleKeyDown}
           placeholder="Send a message or upload a file..."
           className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
@@ -125,7 +158,9 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           type="submit"
           disabled={uploading}
           className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition ${
-            uploading ? "bg-gray-500 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-600"
+            uploading
+              ? "bg-gray-500 cursor-not-allowed"
+              : "bg-blue-500 hover:bg-blue-600"
           }`}
         >
           {uploading ? "Uploading..." : "Send"}
