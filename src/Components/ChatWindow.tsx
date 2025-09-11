@@ -7,12 +7,18 @@ type Message = {
   content: string;
 };
 
-export default function ChatWindow({ messages }: { messages: Message[] }) {
+export default function ChatWindow({
+  messages,
+  isLoading,
+}: {
+  messages: Message[];
+  isLoading?: boolean;
+}) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 md:px-20 py-6 space-y-6">
@@ -61,6 +67,20 @@ export default function ChatWindow({ messages }: { messages: Message[] }) {
           )}
         </div>
       ))}
+
+      {isLoading && (
+        <div className="flex items-start gap-3 justify-start">
+          <div className="h-8 w-8 flex items-center justify-center rounded-full bg-green-600 text-white font-bold">
+            AI
+          </div>
+          <div className="bg-[#444654] text-gray-100 rounded-lg px-4 py-3 text-sm shadow-md flex space-x-2">
+            <span className="animate-bounce">●</span>
+            <span className="animate-bounce delay-200">●</span>
+            <span className="animate-bounce delay-400">●</span>
+          </div>
+        </div>
+      )}
+
       <div ref={endRef} />
     </div>
   );

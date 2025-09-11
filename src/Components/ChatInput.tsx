@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, ChangeEvent, KeyboardEvent } from "react";
+import { useState, FormEvent, ChangeEvent, KeyboardEvent, useRef, useEffect } from "react";
 
 interface ChatInputProps {
   onSend: (msg: string, fileUrl?: string, chatSummary?: string) => void;
@@ -12,6 +12,16 @@ export default function ChatInput({ onSend }: ChatInputProps) {
   const [uploading, setUploading] = useState(false);
   const [fileSummary, setFileSummary] = useState<string>("");
 
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // auto-grow effect
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"; // reset
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px"; // grow
+    }
+  }, [input]);
+
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
@@ -19,6 +29,13 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     let chatSummary: string | undefined;
 
     if (file) {
+      console.log("Preparing upload. file instanceof File:", file instanceof File, "file:", file);
+
+      if (!(file instanceof File)) {
+        alert("Selected item is not a File object. Please reselect.");
+        return;
+      }
+
       setUploading(true);
       const fd = new FormData();
       fd.append("file", file);
@@ -28,18 +45,27 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           method: "POST",
           body: fd,
         });
-        const data = await res.json();
 
-        if (data.error) {
-          alert(data.error);
+        const text = await res.text();
+        let data: any = {};
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { rawText: text };
+        }
+
+        console.log("Upload response status:", res.status, "body:", data);
+
+        if (!res.ok) {
+          alert("Upload failed: " + (data.error || data.rawText || res.status));
         } else {
-          fileUrl = data.url;
-          chatSummary = data.ai_summary || data.chatgpt_summary;
+          fileUrl = data.file_url ?? data.url ?? data.fileUrl;
+          chatSummary = data.ai_summary ?? data.chatgpt_summary ?? data.ai_summary_text;
           setFileSummary(chatSummary || "");
         }
       } catch (err) {
-        console.error(err);
-        alert("File upload failed.");
+        console.error("Fetch failed:", err);
+        alert("Network/upload failed — see console.");
       } finally {
         setUploading(false);
         setFile(null);
@@ -58,9 +84,8 @@ export default function ChatInput({ onSend }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter without Shift → send
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // prevent new line
+      e.preventDefault();
       handleSend();
     }
   };
@@ -69,30 +94,30 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     <div className="border-t border-gray-700 bg-[#343541] p-4">
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 max-w-4xl mx-auto w-full"
+        className="flex items-end gap-2 max-w-4xl mx-auto w-full"
       >
         {/* File upload */}
         <label className="cursor-pointer text-gray-400 hover:text-white">
           <input
             type="file"
             className="hidden"
-            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-              setFile(e.target.files?.[0] || null)
-            }
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setFile(e.target.files?.[0] ?? null);
+              console.log(e.target.files?.[0]);
+            }}
           />
           📎
         </label>
 
-        {/* Text input */}
+        {/* Text input with auto-grow */}
         <textarea
+          ref={textareaRef}
           rows={1}
           value={input}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-            setInput(e.target.value)
-          }
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Send a message or upload a file..."
-          className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+          className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
         />
 
         {/* Send button */}
