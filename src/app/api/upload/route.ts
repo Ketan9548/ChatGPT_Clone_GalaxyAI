@@ -52,7 +52,6 @@ async function extractTextFromFile(file: File, buffer: Buffer): Promise<string> 
   if (file.type.startsWith("image/")) {
     const { data: { text } } = await Tesseract.recognize(buffer, "eng", {
       logger: (m) => console.log(m),
-      workerPath: require.resolve("tesseract.js-node")
     });
     return text || "";
   }
