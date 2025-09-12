@@ -137,10 +137,10 @@ export async function POST(req: Request) {
       extracted_text: extractedText || null,
       ai_summary: aiSummary,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Upload API error:", err);
     return NextResponse.json(
-      { success: false, message: err.message || "Upload failed" },
+      { success: false, message: (err as Error).message || "Upload failed" },
       { status: 500 }
     );
   }
