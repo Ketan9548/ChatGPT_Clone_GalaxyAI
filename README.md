@@ -50,7 +50,7 @@ Images → tesseract.js (OCR)
 
 🎨 Modern UI built with Next.js App Router + Tailwind CSS
 
-Open [http://localhost:3000](https://chat-gpt-clone-galaxy-ai.vercel.app/) with your browser to see the result.
+Open [Verceldeployement.com](https://chat-gpt-clone-galaxy-ai.vercel.app/) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
