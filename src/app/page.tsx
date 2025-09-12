@@ -23,7 +23,7 @@ export default function Home() {
       content: text,
     };
 
-    // attach fileUrl if present
+
     if (fileUrl) {
       newMessage = {
         ...newMessage,
@@ -31,7 +31,6 @@ export default function Home() {
       };
     }
 
-    // attach summary if present
     if (chatSummary) {
       newMessage = {
         ...newMessage,
@@ -41,7 +40,7 @@ export default function Home() {
 
     setMessages((prev) => [...prev, newMessage]);
 
-    // continue your existing send logic…
+
   };
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export default function Home() {
 
   return (
     <div className="h-screen flex bg-[#343541] text-white">
-      {/* Sidebar */}
+     
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -69,7 +68,6 @@ export default function Home() {
         />
       )}
 
-      {/* Main chat area */}
       <div className="flex-1 flex flex-col md:ml-0">
         <header className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#343541]">
           <button
@@ -83,10 +81,10 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Messages */}
+     
         <main className="flex-1 overflow-y-auto p-4 space-y-4">
           <ChatWindow messages={messages} isLoading={isLoading} />{" "}
-          {/* 👈 pass isLoading */}
+        
           <div ref={chatEndRef} />
         </main>
 

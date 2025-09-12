@@ -29,7 +29,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Auto-resize textarea
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -38,14 +38,13 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     }
   }, [input]);
 
-  // --- Handle send ---
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
     let fileUrl: string | undefined;
     let chatSummary: string | undefined;
 
-    // Upload file if present
+
     if (file) {
       setUploading(true);
       const fd = new FormData();
@@ -71,7 +70,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
       }
     }
 
-    // Decide what to send
+
     const messageToSend = input.trim() || chatSummary || "";
     if (messageToSend) {
       onSend(messageToSend, fileUrl, chatSummary);
@@ -97,7 +96,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         onSubmit={handleSubmit}
         className="flex items-end gap-2 max-w-4xl mx-auto w-full"
       >
-        {/* File upload */}
+
         <label className="cursor-pointer text-gray-400 hover:text-white">
           <input
             type="file"
@@ -109,7 +108,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           📎
         </label>
 
-        {/* Text input */}
+
         <textarea
           ref={textareaRef}
           rows={1}
@@ -120,7 +119,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           className="flex-1 resize-none rounded-lg bg-[#40414f] text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-40 overflow-y-auto"
         />
 
-        {/* Send button */}
+   
         <button
           type="submit"
           disabled={uploading}
@@ -134,7 +133,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         </button>
       </form>
 
-      {/* File summary preview */}
+    
       {fileSummary && (
         <div className="mt-2 p-2 bg-gray-800 text-gray-100 rounded-md text-sm">
           <strong>AI Summary:</strong>

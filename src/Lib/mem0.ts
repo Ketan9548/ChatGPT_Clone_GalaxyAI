@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
-// --- Memory Document Type ---
+
 export interface MemoryDoc {
   userId: string;
   role: "user" | "assistant" | "system";
@@ -9,13 +9,12 @@ export interface MemoryDoc {
   updatedAt: Date;
 }
 
-// --- Extend Mongoose Document for type safety ---
 interface MemoryMongoDoc extends Document, Omit<MemoryDoc, "createdAt" | "updatedAt"> {
   createdAt: Date;
   updatedAt: Date;
 }
 
-// --- Define Mongoose schema ---
+
 const MemorySchema = new Schema<MemoryMongoDoc>(
   {
     userId: { type: String, required: true },
@@ -25,13 +24,12 @@ const MemorySchema = new Schema<MemoryMongoDoc>(
   { timestamps: true }
 );
 
-// --- Prevent model overwrite in Next.js hot reload ---
+
 const Memory: Model<MemoryMongoDoc> =
   (mongoose.models.Memory as Model<MemoryMongoDoc>) ||
   mongoose.model<MemoryMongoDoc>("Memory", MemorySchema);
 
-// --- Fetch memory for a user ---
-// Optional `limit` param to trim context for AI
+
 export async function getMemoryForUser(
   userId: string,
   limit: number = 50
@@ -40,7 +38,7 @@ export async function getMemoryForUser(
     const memories = await Memory.find({ userId })
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean<MemoryDoc[]>(); // ✅ Fix typing for lean
+      .lean<MemoryDoc[]>(); 
     return memories;
   } catch (err) {
     console.error("❌ Error fetching memory:", err);
@@ -48,7 +46,7 @@ export async function getMemoryForUser(
   }
 }
 
-// --- Save a memory entry ---
+
 export async function saveMemoryForUser(
   userId: string,
   message: { role: "user" | "assistant" | "system"; content: string }
@@ -60,7 +58,7 @@ export async function saveMemoryForUser(
   }
 }
 
-// --- Optional: clear memory for a user ---
+
 export async function clearMemoryForUser(userId: string): Promise<void> {
   try {
     await Memory.deleteMany({ userId });

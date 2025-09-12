@@ -1,12 +1,11 @@
 import mongoose from "mongoose";
 
-// --- Message Type ---
+
 export interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-// --- Conversation Document Type ---
 export interface ConversationDoc extends mongoose.Document {
   userId: string;
   messages: Message[];
@@ -14,7 +13,7 @@ export interface ConversationDoc extends mongoose.Document {
   updatedAt: Date;
 }
 
-// --- Define schema ---
+
 const MessageSchema = new mongoose.Schema<Message>(
   {
     role: { type: String, required: true, enum: ["user", "assistant"] },
@@ -31,7 +30,6 @@ const ConversationSchema = new mongoose.Schema<ConversationDoc>(
   { timestamps: true }
 );
 
-// --- Prevent model overwrite in Next.js hot reload ---
 const Conversation =
   (mongoose.models && mongoose.models.Conversation) ||
   mongoose.model<ConversationDoc>("Conversation", ConversationSchema);

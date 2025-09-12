@@ -5,9 +5,9 @@ import { useEffect, useRef } from "react";
 type Message = {
   role: "user" | "assistant";
   content: string;
-  fileUrl?: string;      // <-- added
-  fileName?: string;     // <-- added
-  fileType?: string;     // <-- added
+  fileUrl?: string;      
+  fileName?: string;
+  fileType?: string;
 };
 
 export default function ChatWindow({
@@ -45,12 +45,12 @@ export default function ChatWindow({
                 : "bg-[#444654] text-gray-100"
             }`}
           >
-            {/* --- Main AI/User Text --- */}
+           
             {m.content.split("\n").map((line, idx) => (
               <p key={idx}>{line}</p>
             ))}
 
-            {/* --- File link if available --- */}
+          
             {m.fileUrl && (
               <a
                 href={m.fileUrl}

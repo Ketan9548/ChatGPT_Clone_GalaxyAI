@@ -5,7 +5,7 @@ import { X, Plus, Bookmark, Settings } from "lucide-react";
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
-  onNewChat: () => void; // ✅ added
+  onNewChat: () => void; 
 }
 
 export default function Sidebar({ open, onClose, onNewChat }: SidebarProps) {
@@ -24,7 +24,7 @@ export default function Sidebar({ open, onClose, onNewChat }: SidebarProps) {
         </button>
       </div>
 
-      {/* Sidebar Content */}
+
       <nav className="flex-1 p-2 space-y-2">
         <button
           onClick={onNewChat}
