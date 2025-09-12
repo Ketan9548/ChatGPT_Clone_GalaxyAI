@@ -17,7 +17,7 @@ export default function Home() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const handleSend = async (msg: string, file?: string) => {
+  const handleSend = async (msg: string, file?: File) => {
     if (!msg.trim() && !file) return;
 
     let updatedMessages: Message[] = [...messages];

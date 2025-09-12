@@ -29,6 +29,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -37,14 +38,14 @@ export default function ChatInput({ onSend }: ChatInputProps) {
     }
   }, [input]);
 
-  // --- Handle sending ---
+  // --- Handle send ---
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
     let fileUrl: string | undefined;
     let chatSummary: string | undefined;
 
-    // --- Upload file if present ---
+    // Upload file if present
     if (file) {
       setUploading(true);
       const fd = new FormData();
@@ -70,9 +71,10 @@ export default function ChatInput({ onSend }: ChatInputProps) {
       }
     }
 
-    // --- Send text message (or file summary) to Home ---
-    if (input.trim() || chatSummary) {
-      onSend(input, fileUrl, chatSummary);
+    // Decide what to send
+    const messageToSend = input.trim() || chatSummary || "";
+    if (messageToSend) {
+      onSend(messageToSend, fileUrl, chatSummary);
       setInput("");
     }
   };
@@ -132,7 +134,7 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         </button>
       </form>
 
-      {/* File summary */}
+      {/* File summary preview */}
       {fileSummary && (
         <div className="mt-2 p-2 bg-gray-800 text-gray-100 rounded-md text-sm">
           <strong>AI Summary:</strong>
