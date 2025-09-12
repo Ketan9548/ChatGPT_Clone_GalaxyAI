@@ -14,6 +14,42 @@ pnpm dev
 bun dev
 ```
 
+## Data Flow
+[User Uploads File or Sends Text]
+        ↓
+[Next.js Frontend → API Route (/api/upload)]
+        ↓
+ ┌─────────────┬─────────────┐
+ │ Text Extract │ Cloudinary  │
+ └─────────────┴─────────────┘
+        ↓
+[Chat API → Summarize Extracted Text]
+        ↓
+[Response → Chat UI Displays:
+   - Upload Status
+   - Extracted Text
+   - AI Summary]
+
+
+## Features
+💬 Chat interface (messages + file support)
+
+📤 File upload with Cloudinary storage
+
+📝 Text extraction:
+
+PDF → pdf-parse
+
+DOCX → mammoth
+
+Excel/CSV → xlsx
+
+Images → tesseract.js (OCR)
+
+🤖 AI Summarization via Google Gemini
+
+🎨 Modern UI built with Next.js App Router + Tailwind CSS
+
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
