@@ -19,50 +19,59 @@ cloudinary.config({
 
 // --- Extract text from file ---
 async function extractTextFromFile(file: File, buffer: Buffer): Promise<string> {
-  // PDF
-  if (file.type === "application/pdf") {
-    const data = await pdfParse(buffer);
-    return data.text || "";
-  }
+  try {
+    // PDF
+    if (file.type === "application/pdf") {
+      const data = await pdfParse(buffer);
+      return data.text || "";
+    }
 
-  // DOCX
-  if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.name.endsWith(".docx")) {
-    const { value: text } = await mammoth.extractRawText({ buffer });
-    return text || "";
-  }
+    // DOCX
+    if (
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.name.endsWith(".docx")
+    ) {
+      const { value: text } = await mammoth.extractRawText({ buffer });
+      return text || "";
+    }
 
-  // Excel / CSV
-  if (
-    file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    file.type === "text/csv" ||
-    file.name.endsWith(".xlsx") ||
-    file.name.endsWith(".csv")
-  ) {
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    let text = "";
-    workbook.SheetNames.forEach((sheetName) => {
-      const sheet = workbook.Sheets[sheetName];
-      text += XLSX.utils.sheet_to_csv(sheet) + "\n";
-    });
-    return text;
-  }
+    // Excel / CSV
+    if (
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.type === "text/csv" ||
+      file.name.endsWith(".xlsx") ||
+      file.name.endsWith(".csv")
+    ) {
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      return workbook.SheetNames.map((sheetName) =>
+        XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])
+      ).join("\n");
+    }
 
-  // Images (OCR)
-  if (file.type.startsWith("image/")) {
-    const { data: { text } } = await Tesseract.recognize(buffer, "eng", {
-      logger: (m) => console.log(m),
-    });
-    return text || "";
-  }
+    // Images (OCR via Tesseract.js)
+    if (file.type.startsWith("image/")) {
+      const {
+        data: { text },
+      } = await Tesseract.recognize(buffer, "eng", {
+        logger: () => {}, // silence logs in production
+      });
+      return text || "";
+    }
 
-  // Other file types
-  return "";
+    return "";
+  } catch (err) {
+    console.error("❌ extractTextFromFile failed:", err);
+    return "";
+  }
 }
 
 // --- Upload to Cloudinary ---
-async function uploadToCloudinary(file: File, buffer: Buffer) {
-  return new Promise<{ url: string; public_id: string }>((resolve, reject) => {
+async function uploadToCloudinary(
+  buffer: Buffer
+): Promise<{ url: string; public_id: string }> {
+  return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: "auto", folder: "uploads" },
       (error, result) => {
@@ -70,8 +79,7 @@ async function uploadToCloudinary(file: File, buffer: Buffer) {
         resolve({ url: result.secure_url, public_id: result.public_id });
       }
     );
-    const readable = Readable.from(buffer);
-    readable.pipe(stream);
+    Readable.from(buffer).pipe(stream);
   });
 }
 
@@ -82,51 +90,61 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ success: false, message: "No file uploaded" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "No file uploaded" },
+        { status: 400 }
+      );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Extract text
+    // Extract text safely
     const extractedText = await extractTextFromFile(file, buffer);
 
     // Upload to Cloudinary
-    const { url: fileUrl } = await uploadToCloudinary(file, buffer);
+    const { url: fileUrl } = await uploadToCloudinary(buffer);
 
-    // Optional: AI summary
+    // --- AI summary with Gemini ---
     let aiSummary: string | null = null;
     try {
       if (extractedText?.trim().length > 5) {
-        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64)
-          throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 is not set");
+        const keyBase64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
+        if (!keyBase64) {
+          console.warn("⚠️ GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 not set");
+        } else {
+          const decodedKey = Buffer.from(keyBase64, "base64").toString("utf-8");
+          const credentials = JSON.parse(decodedKey);
+          const { google } = await import("googleapis");
+          const auth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+          });
+          const token = await auth.getAccessToken();
 
-        const decodedKey = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, "base64").toString("utf-8");
-        const credentials = JSON.parse(decodedKey);
-        const { google } = await import("googleapis");
-        const auth = new google.auth.GoogleAuth({
-          credentials,
-          scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-        });
-        const token = await auth.getAccessToken();
+          const prompt = `Summarize this document clearly:\n\n${extractedText}`;
+          const GEMINI_API_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
 
-        const prompt = `Summarize this document clearly:\n\n${extractedText}`;
-        const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
-        const resp = await fetch(GEMINI_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
+          const resp = await fetch(GEMINI_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+            }),
+          });
 
-        if (resp.ok) {
-          const data = await resp.json();
-          aiSummary = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+          if (resp.ok) {
+            const data = await resp.json();
+            aiSummary =
+              data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+          }
         }
       }
     } catch (err) {
-      console.warn("AI summary failed:", err);
+      console.warn("⚠️ AI summary failed:", err);
     }
 
     return NextResponse.json({
@@ -138,9 +156,12 @@ export async function POST(req: Request) {
       ai_summary: aiSummary,
     });
   } catch (err: unknown) {
-    console.error("Upload API error:", err);
+    console.error("❌ Upload API error:", err);
     return NextResponse.json(
-      { success: false, message: (err as Error).message || "Upload failed" },
+      {
+        success: false,
+        message: (err as Error).message || "Upload failed",
+      },
       { status: 500 }
     );
   }
